@@ -1,0 +1,133 @@
+<#
+    FL Studio Plugin Database Organizer
+    -----------------------------------
+
+    Description:
+    This PowerShell script scans your FL Studio plugin database to extract vendor and plugin information 
+    from `.nfo` metadata files. It organizes your `.fst` plugin preset files by vendor, plugin format 
+    (VST, VST3, CLAP, Fruity, Other), and function type (Effects or Generators).
+
+    Features:
+    - Groups plugins by vendor and type into a separate `VENDORLIST` directory.
+    - Prioritizes formats using a user-defined hierarchy (e.g., Fruity > VST3 > CLAP > VST > Other).
+    - Creates a "best version" for each vendor + function combination based on the priority.
+    - Handles missing metadata gracefully and logs any problematic files.
+
+    Intended Usage:
+    - Run on Windows PowerShell to organize FL Studio plugins into a more manageable format.
+    - Ideal for cleaning up large libraries and curating vendor folders.
+    - The folder documents/VENDORLIST folder must still be added within fl studio via the file settings - browswer extra search folders. 
+
+    Requirements:
+    - FL Studio installed with plugins organized using the Plugin Manager.
+    - Preset database found at:
+        $env:USERPROFILE\Documents\Image-Line\FL Studio\Presets\Plugin database
+
+    Output:
+    - Creates a `VENDORLIST` folder in your Documents folder containing organized presets.
+
+    Author: William Ashley 
+    GitHub: https://github.com/WilliamAshley2019
+    Version: 1.0
+    License: MIT
+
+#>
+
+$pluginPriority = @{
+"Fruity" = 1
+"VST3" = 2
+"CLAP" = 3
+"VST" = 4
+"Other" = 5
+}
+
+# Get FL Studio Plugin Database path
+$baseUserPath = $env:USERPROFILE
+$pluginDBPath = Join-Path $baseUserPath "Documents\Image-Line\FL Studio\Presets\Plugin database"
+$effectsPath = Join-Path $pluginDBPath "Installed\Effects"
+$generatorsPath = Join-Path $pluginDBPath "Installed\Generators"
+$vendorListPath = Join-Path $baseUserPath "Documents\VENDORLIST"
+
+# Map each search path to its function type
+$searchPaths = @{
+$effectsPath = "Effects"
+$generatorsPath = "Generators"
+}
+
+# Track best plugin per vendor/function for prioritization
+$bestPluginPerVendor = @{}
+
+foreach ($path in $searchPaths.Keys) {
+$functionType = $searchPaths[$path]
+
+$nfoFiles = Get-ChildItem -Path $path -Recurse -Filter *.nfo -Force -ErrorAction SilentlyContinue
+
+foreach ($nfo in $nfoFiles) {
+$lines = Get-Content -Path $nfo.FullName -ErrorAction SilentlyContinue
+
+$vendorLine = $lines | Where-Object { $_ -like "ps_file_vendorname_0=*" }
+$presetLine = $lines | Where-Object { $_ -like "ps_presetfilename=*" }
+
+if ($vendorLine -and $presetLine) {
+$vendorName = $vendorLine -replace "ps_file_vendorname_0=", "" -replace '[<>:"/\\|?*]', '' -replace '\s+$', ''
+$presetPathRaw = $presetLine -replace "ps_presetfilename=", ""
+$presetPathResolved = $presetPathRaw -replace "%FLPluginDBPath%", $pluginDBPath
+$fstPath = $presetPathResolved -replace "/", "\" # Normalize slashes
+
+$pluginType = Split-Path -Path $nfo.DirectoryName -Leaf
+if ($pluginType -notin @("VST", "VST3", "CLAP", "Fruity")) {
+$pluginType = "Other"
+}
+
+if (Test-Path $fstPath) {
+# Create folders if not existing
+$vendorFolder = Join-Path $vendorListPath $vendorName
+$typeFolder = Join-Path $vendorFolder $pluginType
+$functionFolder = Join-Path $vendorFolder $functionType
+
+foreach ($folder in @($typeFolder, $functionFolder)) {
+if (-not (Test-Path $folder)) {
+New-Item -ItemType Directory -Path $folder -Force | Out-Null
+}
+}
+
+# Always copy to TYPE folder
+$fstFileName = Split-Path $fstPath -Leaf
+$destByType = Join-Path $typeFolder $fstFileName
+Copy-Item -Path $fstPath -Destination $destByType -Force -ErrorAction SilentlyContinue
+
+# Store best candidate for FUNCTION folder
+$key = "$vendorName|$functionType|$fstFileName"
+if (-not $bestPluginPerVendor.ContainsKey($key)) {
+$bestPluginPerVendor[$key] = @{
+Path = $fstPath
+Priority = $pluginPriority[$pluginType]
+DestFolder = $functionFolder
+}
+} elseif ($pluginPriority[$pluginType] -lt $bestPluginPerVendor[$key].Priority) {
+# This format has higher priority
+$bestPluginPerVendor[$key] = @{
+Path = $fstPath
+Priority = $pluginPriority[$pluginType]
+DestFolder = $functionFolder
+}
+}
+} else {
+Write-Warning "FST file not found or unreadable path: $fstPath"
+}
+} else {
+Write-Warning "Missing vendor or preset info in: $($nfo.FullName)"
+}
+}
+}
+
+# Copy only the best version of each plugin to EFFECTS/GENERATORS folder
+foreach ($entry in $bestPluginPerVendor.GetEnumerator()) {
+$pluginName = ($entry.Key -split '\|')[2]
+$destPath = Join-Path $entry.Value.DestFolder $pluginName
+Copy-Item -Path $entry.Value.Path -Destination $destPath -Force -ErrorAction SilentlyContinue
+Write-Output "Best version selected for: $pluginName → $destPath"
+}
+
+
+

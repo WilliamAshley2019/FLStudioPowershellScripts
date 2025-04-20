@@ -1,0 +1,60 @@
+# Set base path
+$unknownPath = Join-Path $env:USERPROFILE "Documents\VENDORLIST\UNKNOWN"
+
+# Get all .fst files recursively
+$fstFiles = Get-ChildItem -Path $unknownPath -Recurse -Filter *.fst -File
+
+# Map of basename to full path
+$fileMap = @{}
+foreach ($file in $fstFiles) {
+$baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+$fileMap[$baseName] = $file.FullName
+}
+
+# Build word-based and fallback prefix groups
+$groups = @{}
+foreach ($filename in $fileMap.Keys) {
+# Normalize
+$name = $filename.Trim()
+$groupKey = ""
+
+if ($name.Contains(" ")) {
+$groupKey = $name.Split(" ")[0]
+} elseif ($name.Length -ge 3) {
+# Fallback to 3-letter prefix
+$groupKey = $name.Substring(0, 3)
+} else {
+# Very short names fallback
+$groupKey = $name
+}
+
+$groupKey = $groupKey.ToUpper()
+
+if (-not $groups.ContainsKey($groupKey)) {
+$groups[$groupKey] = @()
+}
+
+$groups[$groupKey] += $filename
+}
+
+# Copy files into group folders
+foreach ($group in $groups.GetEnumerator()) {
+$groupName = $group.Key
+$fileList = $group.Value
+
+# Skip singletons unless you want every file grouped
+if ($fileList.Count -lt 2) { continue }
+
+$targetFolder = Join-Path $unknownPath $groupName
+if (-not (Test-Path $targetFolder)) {
+New-Item -ItemType Directory -Path $targetFolder -Force | Out-Null
+}
+
+foreach ($filename in $fileList) {
+$sourcePath = $fileMap[$filename]
+$destinationPath = Join-Path $targetFolder ([System.IO.Path]::GetFileName($sourcePath))
+
+Copy-Item -Path $sourcePath -Destination $destinationPath -Force
+Write-Output "Grouped: $filename → $groupName"
+}
+}

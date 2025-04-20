@@ -1,0 +1,105 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Create Form
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "FLP Project Search Tool"
+$form.Size = New-Object System.Drawing.Size(520, 300)
+$form.StartPosition = "CenterScreen"
+
+# Path Label & TextBox
+$lblPath = New-Object System.Windows.Forms.Label
+$lblPath.Text = "Search Folder:"
+$lblPath.Location = New-Object System.Drawing.Point(10, 20)
+$form.Controls.Add($lblPath)
+
+$txtPath = New-Object System.Windows.Forms.TextBox
+$txtPath.Location = New-Object System.Drawing.Point(120, 20)
+$txtPath.Size = New-Object System.Drawing.Size(350, 20)
+$form.Controls.Add($txtPath)
+
+# Search String Label & TextBox
+$lblString = New-Object System.Windows.Forms.Label
+$lblString.Text = "Text to Find:"
+$lblString.Location = New-Object System.Drawing.Point(10, 60)
+$form.Controls.Add($lblString)
+
+$txtString = New-Object System.Windows.Forms.TextBox
+$txtString.Location = New-Object System.Drawing.Point(120, 60)
+$txtString.Size = New-Object System.Drawing.Size(350, 20)
+$form.Controls.Add($txtString)
+
+# Date Range Labels & Pickers
+$lblStart = New-Object System.Windows.Forms.Label
+$lblStart.Text = "Start Date:"
+$lblStart.Location = New-Object System.Drawing.Point(10, 100)
+$form.Controls.Add($lblStart)
+
+$dtpStart = New-Object System.Windows.Forms.DateTimePicker
+$dtpStart.Location = New-Object System.Drawing.Point(120, 100)
+$form.Controls.Add($dtpStart)
+
+$lblEnd = New-Object System.Windows.Forms.Label
+$lblEnd.Text = "End Date:"
+$lblEnd.Location = New-Object System.Drawing.Point(10, 140)
+$form.Controls.Add($lblEnd)
+
+$dtpEnd = New-Object System.Windows.Forms.DateTimePicker
+$dtpEnd.Location = New-Object System.Drawing.Point(120, 140)
+$form.Controls.Add($dtpEnd)
+
+# Output TextBox
+$txtOutput = New-Object System.Windows.Forms.TextBox
+$txtOutput.Multiline = $true
+$txtOutput.ScrollBars = "Vertical"
+$txtOutput.Location = New-Object System.Drawing.Point(10, 180)
+$txtOutput.Size = New-Object System.Drawing.Size(460, 50)
+$form.Controls.Add($txtOutput)
+
+# Search Button
+$btnSearch = New-Object System.Windows.Forms.Button
+$btnSearch.Text = "Search"
+$btnSearch.Location = New-Object System.Drawing.Point(400, 140)
+$btnSearch.Size = New-Object System.Drawing.Size(75, 25)
+$form.Controls.Add($btnSearch)
+
+# Search Click Event
+$btnSearch.Add_Click({
+$folder = $txtPath.Text
+$searchText = $txtString.Text
+$startDate = $dtpStart.Value
+$endDate = $dtpEnd.Value
+$txtOutput.Text = "Searching..."
+
+if (!(Test-Path $folder)) {
+[System.Windows.Forms.MessageBox]::Show("Invalid folder path.","Error",[System.Windows.Forms.MessageBoxButtons]::OK,[System.Windows.Forms.MessageBoxIcon]::Error)
+return
+}
+
+$flpFiles = Get-ChildItem -Path $folder -Recurse -Filter *.flp |
+Where-Object { $_.LastWriteTime -ge $startDate -and $_.LastWriteTime -le $endDate }
+
+$results = ""
+
+foreach ($flp in $flpFiles) {
+try {
+$bytes = [System.IO.File]::ReadAllBytes($flp.FullName)
+$text = [System.Text.Encoding]::ASCII.GetString($bytes)
+
+if ($text -like "*$searchText*") {
+$results += "$($flp.FullName)`n"
+}
+} catch {
+$results += "Error reading: $($flp.FullName)`n"
+}
+}
+
+if ($results) {
+$txtOutput.Text = "Matches found:`n$results"
+} else {
+$txtOutput.Text = "No matches found."
+}
+})
+
+# Run the form
+[void]$form.ShowDialog()

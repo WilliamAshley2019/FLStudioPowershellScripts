@@ -1,5 +1,5 @@
 # PowerShell script to set UserPostMessageLimit in Windows Registry
-
+#This script aims to increase the amount of GUI processing that is capable to reduce the risk of GUI lockouts in FL Studio, it is one suggested fix for plugins such as Arturia plugins.
 # Define the registry path and value name
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows"
 $valueName = "UserPostMessageLimit"
